@@ -106,6 +106,7 @@ const Select = React.createClass({
 			optionComponent: Option,
 			placeholder: 'Select...',
 			required: false,
+			newOptionCreator: null,
 			scrollMenuIntoView: true,
 			searchable: true,
 			simpleValue: false,
@@ -246,6 +247,21 @@ const Select = React.createClass({
 		});
 	},
 
+	createOption(inputValue) {
+		if (this.props.newOptionCreator) {
+			return this.props.newOptionCreator(inputValue);
+		}
+
+		const option = {
+			create: true
+		};
+
+		option[this.props.labelKey] = inputValue;
+		option[this.props.valueKey] = inputValue;
+
+		return option;
+	},
+
 	handleInputFocus (event) {
 		var isOpen = this.state.isOpen || this._openAfterFocus;
 		if (this.props.onFocus) {
@@ -317,15 +333,15 @@ const Select = React.createClass({
 			case 40: // down
 				this.focusNextOption();
 			break;
-			// case 188: // ,
-			// 	if (this.props.allowCreate && this.props.multi) {
-			// 		event.preventDefault();
-			// 		event.stopPropagation();
-			// 		this.selectFocusedOption();
-			// 	} else {
-			// 		return;
-			// 	}
-			// break;
+			case 188: // ,
+				if (this.props.allowCreate && this.props.multi) {
+					event.preventDefault();
+					event.stopPropagation();
+					this.selectFocusedOption();
+				} else {
+					return;
+				}
+			break;
 			default: return;
 		}
 		event.preventDefault();
@@ -349,8 +365,37 @@ const Select = React.createClass({
 		return (multi ? value.length === 0 : Object.keys(value).length === 0);
 	},
 
+	getAddLabelText (option) {
+		return this.props.addLabelText.replace('{label}', option[this.props.labelKey]);
+	},
+
 	getOptionLabel (op) {
 		return op[this.props.labelKey];
+	},
+
+	prependAddLabel (options, excludeOptions) {
+		if (this.props.allowCreate && this.state.inputValue.trim()) {
+			const inputValue = this.state.inputValue;
+			const isSelectedOrExists = options.concat(excludeOptions).some(o => {
+				return (
+					o[this.props.valueKey] === inputValue ||
+					o[this.props.labelKey] === inputValue
+				);
+			});
+
+			if (!isSelectedOrExists) {
+				const newOption = this.createOption(inputValue);
+				options = options.slice(0);
+				options.unshift(newOption);
+			}
+		}
+		return options;
+	},
+
+	getOptions (excludeOptions) {
+		let options = this.filterOptions(excludeOptions);
+		options = this.prependAddLabel(options, excludeOptions);
+		return options;
 	},
 
 	getValueArray () {
@@ -437,6 +482,47 @@ const Select = React.createClass({
 		}, this.focus);
 	},
 
+	filterOptions (excludeOptions) {
+		let filterValue = this.state.inputValue;
+		const options = this.props.options || [];
+
+		if (typeof this.props.filterOptions === 'function') {
+			return this.props.filterOptions.call(this, options, filterValue, excludeOptions);
+		} else if (this.props.filterOptions) {
+			if (this.props.ignoreAccents) {
+				filterValue = stripDiacritics(filterValue);
+			}
+			if (this.props.ignoreCase) {
+				filterValue = filterValue.toLowerCase();
+			}
+			excludeOptions = excludeOptions.map(i => i[this.props.valueKey]);
+			return options.filter(option => {
+				if (excludeOptions.indexOf(option[this.props.valueKey]) > -1) return false;
+				if (this.props.filterOption) return this.props.filterOption.call(this, option, filterValue);
+				if (!filterValue) return true;
+				var valueTest = String(option[this.props.valueKey]);
+				var labelTest = String(option[this.props.labelKey]);
+				if (this.props.ignoreAccents) {
+					if (this.props.matchProp !== 'label') valueTest = stripDiacritics(valueTest);
+					if (this.props.matchProp !== 'value') labelTest = stripDiacritics(labelTest);
+				}
+				if (this.props.ignoreCase) {
+					if (this.props.matchProp !== 'label') valueTest = valueTest.toLowerCase();
+					if (this.props.matchProp !== 'value') labelTest = labelTest.toLowerCase();
+				}
+				return this.props.matchPos === 'start' ? (
+					(this.props.matchProp !== 'label' && valueTest.substr(0, filterValue.length) === filterValue) ||
+					(this.props.matchProp !== 'value' && labelTest.substr(0, filterValue.length) === filterValue)
+				) : (
+					(this.props.matchProp !== 'label' && valueTest.indexOf(filterValue) >= 0) ||
+					(this.props.matchProp !== 'value' && labelTest.indexOf(filterValue) >= 0)
+				);
+			});
+		} else {
+			return options;
+		}
+	},
+
 	focusOption (option) {
 		this.setState({
 			focusedOption: option
@@ -486,9 +572,6 @@ const Select = React.createClass({
 	},
 
 	selectFocusedOption () {
-		// if (this.props.allowCreate && !this.state.focusedOption) {
-		// 	return this.selectValue(this.state.inputValue);
-		// }
 		if (this._focusedOption) {
 			return this.selectValue(this._focusedOption);
 		}
@@ -571,8 +654,8 @@ const Select = React.createClass({
 	renderClear () {
 		if (!this.props.clearable || !this.props.value || (this.props.multi && !this.props.value.length) || this.props.disabled || this.props.isLoading) return;
 		return (
-			<span className="Select-clear-zone" title={this.props.multi ? this.props.clearAllText : this.props.clearValueText} 
-						aria-label={this.props.multi ? this.props.clearAllText : this.props.clearValueText} 
+			<span className="Select-clear-zone" title={this.props.multi ? this.props.clearAllText : this.props.clearValueText}
+						aria-label={this.props.multi ? this.props.clearAllText : this.props.clearValueText}
 						onMouseDown={this.clearValue}
 						onTouchStart={this.handleTouchStart}
 						onTouchMove={this.handleTouchMove}
@@ -590,52 +673,12 @@ const Select = React.createClass({
 		);
 	},
 
-	filterOptions (excludeOptions) {
-		var filterValue = this.state.inputValue;
-		var options = this.props.options || [];
-		if (typeof this.props.filterOptions === 'function') {
-			return this.props.filterOptions.call(this, options, filterValue, excludeOptions);
-		} else if (this.props.filterOptions) {
-			if (this.props.ignoreAccents) {
-				filterValue = stripDiacritics(filterValue);
-			}
-			if (this.props.ignoreCase) {
-				filterValue = filterValue.toLowerCase();
-			}
-			if (excludeOptions) excludeOptions = excludeOptions.map(i => i[this.props.valueKey]);
-			return options.filter(option => {
-				if (excludeOptions && excludeOptions.indexOf(option[this.props.valueKey]) > -1) return false;
-				if (this.props.filterOption) return this.props.filterOption.call(this, option, filterValue);
-				if (!filterValue) return true;
-				var valueTest = String(option[this.props.valueKey]);
-				var labelTest = String(option[this.props.labelKey]);
-				if (this.props.ignoreAccents) {
-					if (this.props.matchProp !== 'label') valueTest = stripDiacritics(valueTest);
-					if (this.props.matchProp !== 'value') labelTest = stripDiacritics(labelTest);
-				}
-				if (this.props.ignoreCase) {
-					if (this.props.matchProp !== 'label') valueTest = valueTest.toLowerCase();
-					if (this.props.matchProp !== 'value') labelTest = labelTest.toLowerCase();
-				}
-				return this.props.matchPos === 'start' ? (
-					(this.props.matchProp !== 'label' && valueTest.substr(0, filterValue.length) === filterValue) ||
-					(this.props.matchProp !== 'value' && labelTest.substr(0, filterValue.length) === filterValue)
-				) : (
-					(this.props.matchProp !== 'label' && valueTest.indexOf(filterValue) >= 0) ||
-					(this.props.matchProp !== 'value' && labelTest.indexOf(filterValue) >= 0)
-				);
-			});
-		} else {
-			return options;
-		}
-	},
-
 	renderMenu (options, valueArray, focusedOption) {
-		if (options && options.length) {
+		if (options.length) {
 			let Option = this.props.optionComponent;
 			let renderLabel = this.props.optionRenderer || this.getOptionLabel;
 			return options.map((option, i) => {
-				let isSelected = valueArray && valueArray.indexOf(option) > -1;
+				let isSelected = valueArray.indexOf(option) > -1;
 				let isFocused = option === focusedOption;
 				let optionRef = isFocused ? 'focused' : null;
 				let optionClass = classNames({
@@ -644,6 +687,7 @@ const Select = React.createClass({
 					'is-focused': isFocused,
 					'is-disabled': option.disabled,
 				});
+				let addLabelText = this.getAddLabelText(option);
 				return (
 					<Option
 						className={optionClass}
@@ -655,6 +699,7 @@ const Select = React.createClass({
 						option={option}
 						isSelected={isSelected}
 						ref={optionRef}
+						addLabelText={addLabelText}
 						>
 						{renderLabel(option)}
 					</Option>
@@ -689,7 +734,7 @@ const Select = React.createClass({
 
 	render () {
 		let valueArray = this.getValueArray();
-		let options = this._visibleOptions = this.filterOptions(this.props.multi ? valueArray : null);
+		let options = this._visibleOptions = this.getOptions(this.props.multi ? valueArray : []);
 		let isOpen = this.state.isOpen;
 		if (this.props.multi && !options.length && valueArray.length && !this.state.inputValue) isOpen = false;
 		let focusedOption = this._focusedOption = this.getFocusableOption(valueArray[0]);
@@ -706,11 +751,11 @@ const Select = React.createClass({
 		return (
 			<div ref="wrapper" className={className} style={this.props.wrapperStyle}>
 				{this.renderHiddenField(valueArray)}
-				<div ref="control" 
-						 className="Select-control" 
-						 style={this.props.style} 
-						 onKeyDown={this.handleKeyDown} 
-						 onMouseDown={this.handleMouseDown} 
+				<div ref="control"
+						 className="Select-control"
+						 style={this.props.style}
+						 onKeyDown={this.handleKeyDown}
+						 onMouseDown={this.handleMouseDown}
 						 onTouchEnd={this.handleTouchEnd}
 						 onTouchStart={this.handleTouchStart}
 						 onTouchMove={this.handleTouchMove}>
@@ -722,11 +767,11 @@ const Select = React.createClass({
 				</div>
 				{isOpen ? (
 					<div ref="menuContainer" className="Select-menu-outer" style={this.props.menuContainerStyle}>
-						<div ref="menu" className="Select-menu" 
-								 style={this.props.menuStyle} 
-								 onScroll={this.handleMenuScroll} 
+						<div ref="menu" className="Select-menu"
+								 style={this.props.menuStyle}
+								 onScroll={this.handleMenuScroll}
 								 onMouseDown={this.handleMouseDownOnMenu}>
-							{this.renderMenu(options, !this.props.multi ? valueArray : null, focusedOption)}
+							{this.renderMenu(options, valueArray, focusedOption)}
 						</div>
 					</div>
 				) : null}

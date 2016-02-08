@@ -772,7 +772,7 @@ describe('Select', () => {
 			expect(ReactDOM.findDOMNode(instance).querySelectorAll('.Select-option')[1],
 				'to have attributes', {
 					class: 'is-disabled'
-            });
+			});
 		});
 
 		it('is not selectable by clicking', () => {
@@ -1074,9 +1074,6 @@ describe('Select', () => {
 
 	describe('with allowCreate=true', () => {
 
-		// TODO: allowCreate hasn't been implemented yet in 1.x
-		return;
-
 		beforeEach(() => {
 
 			options = [
@@ -1102,24 +1099,32 @@ describe('Select', () => {
 		it('has an "Add xyz" option when entering xyz', () => {
 			typeSearchText('xyz');
 
-			expect(ReactDOM.findDOMNode(instance), 'queried for', '.Select-menu .Select-option',
+			expect(ReactDOM.findDOMNode(instance), 'queried for', '.Select-option',
 				'to have items satisfying', 'to have text', 'Add xyz to values?');
 		});
 
 		it('fires an onChange with the new value when selecting the Add option', () => {
 
 			typeSearchText('xyz');
-			TestUtils.Simulate.click(ReactDOM.findDOMNode(instance).querySelector('.Select-menu .Select-option'));
+			pressEnterToAccept();
 
-			expect(onChange, 'was called with', 'xyz');
+			expect(onChange, 'was called with', {
+				create: true,
+				value: 'xyz',
+				label: 'xyz'
+			});
 		});
 
 		it('allows updating the options with a new label, following the onChange', () => {
 
 			typeSearchText('xyz');
-			TestUtils.Simulate.click(ReactDOM.findDOMNode(instance).querySelector('.Select-menu .Select-option'));
+			pressEnterToAccept();
 
-			expect(onChange, 'was called with', 'xyz');
+			expect(onChange, 'was called with', {
+				create: true,
+				value: 'xyz',
+				label: 'xyz'
+			});
 
 			// Now the client adds the option, with a new label
 			wrapper.setPropsForChild({
@@ -1142,14 +1147,6 @@ describe('Select', () => {
 				'to have text', 'Add got to values?');
 		});
 
-		it('displays an add option when a value with spaces is entered', () => {
-
-			typeSearchText('got');
-
-			expect(ReactDOM.findDOMNode(instance).querySelectorAll('.Select-menu .Select-option')[0],
-				'to have text', 'Add got to values?');
-		});
-
 		it('displays an add option when a label with spaces is entered', () => {
 
 			typeSearchText('test');
@@ -1158,28 +1155,73 @@ describe('Select', () => {
 				'to have text', 'Add test to values?');
 		});
 
-		it('does not display the option label when an existing value is entered', () => {
+		describe('with newOptionCreator', () => {
+			let newOptionCreator;
 
-			typeSearchText('zzzzz');
+			beforeEach(() => {
 
-			expect(ReactDOM.findDOMNode(instance).querySelectorAll('.Select-menu .Select-option'),
-				'to have length', 1);
-			expect(ReactDOM.findDOMNode(instance), 'queried for first', '.Select-menu .Select-option',
-				'to have text', 'Add zzzzz to values?');
+				options = [
+					{ value: 'one', label: 'One' },
+					{ value: 'two', label: 'Two' }
+				];
+
+				newOptionCreator = sinon.spy((inputValue) => {
+					return {
+						value: inputValue,
+						label: inputValue
+					};
+				});
+
+				// Render an instance of the component
+				wrapper = createControlWithWrapper({
+					value: 'one',
+					options: options,
+					allowCreate: true,
+					searchable: true,
+					newOptionCreator: newOptionCreator
+				});
+			});
+
+			it('fires a newOptionCreator with inputValue', () => {
+
+				typeSearchText('xyz');
+				pressEnterToAccept();
+
+				expect(newOptionCreator, 'was called with', 'xyz');
+			});
 		});
 
-		it('renders the existing option and an add option when an existing display label is entered', () => {
+		describe('with custom label and value keys', () => {
 
-			typeSearchText('test value');
+			beforeEach(() => {
 
-			// First item should be the add option (as the "value" is not in the collection)
-			expect(ReactDOM.findDOMNode(instance).querySelectorAll('.Select-menu .Select-option')[0],
-				'to have text', 'Add test value to values?');
-			// Second item should be the existing option with the matching label
-			expect(ReactDOM.findDOMNode(instance).querySelectorAll('.Select-menu .Select-option')[1],
-				'to have text', 'test value');
-			expect(ReactDOM.findDOMNode(instance).querySelectorAll('.Select-menu .Select-option'),
-				'to have length', 2);
+				options = [
+					{ id: 'one', title: 'One' },
+					{ id: 'two', title: 'Two' }
+				];
+
+				// Render an instance of the component
+				wrapper = createControlWithWrapper({
+					options: options,
+					allowCreate: true,
+					searchable: true,
+					addLabelText: 'Add {label} to values?',
+					valueKey: 'id',
+					labelKey: 'title'
+				});
+			});
+
+			it('fires an onChange with the new option with custom label and value when selecting the Add option', () => {
+
+				typeSearchText('xyz');
+				pressEnterToAccept();
+
+				expect(onChange, 'was called with', {
+					create: true,
+					id: 'xyz',
+					title: 'xyz'
+				});
+			});
 		});
 	});
 
@@ -1366,6 +1408,33 @@ describe('Select', () => {
 
 	});
 
+	describe('with multi=true and allowCreate=true', () => {
+		beforeEach(() => {
+
+			options = [
+				{ value: 'one', label: 'One' },
+				{ value: 'two', label: 'Two' },
+				{ value: 'three', label: 'Three' },
+				{ value: 'four', label: 'Four' }
+			];
+
+			// Render an instance of the component
+			wrapper = createControlWithWrapper({
+				value: '',
+				options: options,
+				searchable: true,
+				multi: true,
+				allowCreate: true
+			});
+		});
+
+		it('creates an option on comma', () => {
+
+			typeSearchText('xyz');
+			TestUtils.Simulate.keyDown(getSelectControl(instance), { keyCode: 188 });
+			expect(onChange, 'was called with', [{ label: 'xyz', value: 'xyz', create: true }]);
+		});
+	});
 	describe('with multi=true and searchable=false', () => {
 
 		beforeEach(() => {
@@ -1821,8 +1890,8 @@ describe('Select', () => {
 
 				let node, component;
 				beforeEach(() => {
-				    node = document.createElement('div');
-				    instance = ReactDOM.render(<Select searchable={true} value="three" options={defaultOptions} />, node);
+					node = document.createElement('div');
+					instance = ReactDOM.render(<Select searchable={true} value="three" options={defaultOptions} />, node);
 				});
 
 				it('should set the isFocused state to false if disabled=true', function(){
@@ -1830,7 +1899,7 @@ describe('Select', () => {
 						expect(instance.state.isFocused, 'to equal', false);
 						findAndFocusInputControl();
 						expect(instance.state.isFocused, 'to equal', true);
-				    ReactDOM.render(<Select disabled={true} searchable={true} value="three" options={defaultOptions} />, node);
+					ReactDOM.render(<Select disabled={true} searchable={true} value="three" options={defaultOptions} />, node);
 						expect(instance.state.isFocused, 'to equal', false);
 				});
 			});

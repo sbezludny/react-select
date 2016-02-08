@@ -3,6 +3,7 @@ import classNames from 'classnames';
 
 const Option = React.createClass({
 	propTypes: {
+		addLabelText: React.PropTypes.string,          // string rendered in case of allowCreate option passed to ReactSelect
 		children: React.PropTypes.node,
 		className: React.PropTypes.string,             // className (based on mouse position)
 		isDisabled: React.PropTypes.bool,              // the option is disabled
@@ -58,7 +59,7 @@ const Option = React.createClass({
 				onMouseEnter={this.handleMouseEnter}
 				onMouseMove={this.handleMouseMove}
 				title={option.title}>
-				{this.props.children}
+				{ option.create ? this.props.addLabelText : this.props.children }
 			</div>
 		);
 	}
